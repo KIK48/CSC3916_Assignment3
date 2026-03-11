@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const passport = require('passport');
@@ -15,6 +17,13 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(passport.initialize());
 
 const router = express.Router();
+
+const mongoose = require('mongoose');
+
+// Connect to MongoDB
+mongoose.connect(process.env.DB)
+    .then(() => console.log("Connected to MongoDB successfully"))
+    .catch(err => console.error("Could not connect to MongoDB:", err));
 
 // Removed getJSONObjectForMovieRequirement as it's not used
 
@@ -69,10 +78,60 @@ router.post('/signin', async (req, res) => { // Use async/await
 
 router.route('/movies')
     .get(authJwtController.isAuthenticated, async (req, res) => {
-        return res.status(500).json({ success: false, message: 'GET request not supported' });
+        // This gets all movies from the DB
+        const movies = await Movie.find();
+        res.json({ success: true, movies: movies });
     })
     .post(authJwtController.isAuthenticated, async (req, res) => {
-        return res.status(500).json({ success: false, message: 'POST request not supported' });
+        // Check if actors exist (This is required for the rubric!)
+        if (!req.body.actors || req.body.actors.length === 0) {
+            return res.status(400).json({ success: false, message: 'Movie must have actors.' });
+        }
+        
+        // Save the movie
+        const movie = new Movie(req.body);
+        await movie.save();
+        res.json({ success: true, message: 'Movie created!' });
+    });
+
+router.route('/movies/:movieParameter')
+    // GET a specific movie by title
+    .get(authJwtController.isAuthenticated, async (req, res) => {
+        console.log("Looking for ID:", req.params.movieParameter);
+        try {
+            // Change findOne({ title: ... }) to findById(...)
+            const movie = await Movie.findById(req.params.movieParameter);
+            
+            if (!movie) return res.status(404).json({ success: false, message: 'Movie not found' });
+            res.status(200).json({ success: true, movie: movie });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ success: false, message: 'Error finding movie - likely invalid ID format' });
+        }
+    })
+    // UPDATE a movie by title
+    .put(authJwtController.isAuthenticated, async (req, res) => {
+        try {
+            const movie = await Movie.findOneAndUpdate(
+                { title: req.params.movieParameter },
+                req.body,
+                { new: true } // Returns the updated document
+            );
+            if (!movie) return res.status(404).json({ success: false, message: 'Movie not found' });
+            res.status(200).json({ success: true, message: 'Movie updated', movie: movie });
+        } catch (err) {
+            res.status(500).json({ success: false, message: 'Error updating movie' });
+        }
+    })
+    // DELETE a movie by title
+    .delete(authJwtController.isAuthenticated, async (req, res) => {
+        try {
+            const movie = await Movie.findOneAndDelete({ title: req.params.movieParameter });
+            if (!movie) return res.status(404).json({ success: false, message: 'Movie not found' });
+            res.status(200).json({ success: true, message: 'Movie deleted' });
+        } catch (err) {
+            res.status(500).json({ success: false, message: 'Error deleting movie' });
+        }
     });
 
 app.use('/', router);

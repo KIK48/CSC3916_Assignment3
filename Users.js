@@ -14,7 +14,7 @@ const connectDB = async () => {
   }
 };
 
-connectDB();
+//connectDB();
 
 
 const UserSchema = new Schema({
